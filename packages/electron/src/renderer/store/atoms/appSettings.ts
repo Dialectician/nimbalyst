@@ -350,11 +350,12 @@ export async function initNotificationSettings(): Promise<NotificationSettings> 
 // PHASE 3: Advanced Settings
 // ============================================================================
 
-export type ReleaseChannel = 'stable' | 'alpha';
+export type ReleaseChannel = 'stable' | 'alpha' | 'dogfood';
 export type PreferredTerminalShell = 'auto' | 'pwsh' | 'powershell' | 'git-bash' | 'wsl' | 'cmd';
 
 export interface AdvancedSettings {
   releaseChannel: ReleaseChannel;
+  dogfoodUpdateFeedURL: string;
   analyticsEnabled: boolean;
   extensionDevToolsEnabled: boolean;
   walkthroughsEnabled: boolean;
@@ -385,6 +386,7 @@ export interface AdvancedSettings {
  */
 const defaultAdvancedSettings: AdvancedSettings = {
   releaseChannel: 'stable',
+  dogfoodUpdateFeedURL: '',
   analyticsEnabled: true,
   extensionDevToolsEnabled: false,
   walkthroughsEnabled: true,
@@ -452,6 +454,9 @@ function scheduleAdvancedPersist(
       switch (key) {
         case 'releaseChannel':
           await window.electronAPI.invoke('release-channel:set', settingsToPersist.releaseChannel);
+          break;
+        case 'dogfoodUpdateFeedURL':
+          await window.electronAPI.invoke('app-settings:set', 'dogfoodUpdateFeedURL', settingsToPersist.dogfoodUpdateFeedURL.trim());
           break;
         case 'analyticsEnabled':
           await window.electronAPI.invoke('analytics:set-enabled', settingsToPersist.analyticsEnabled);
@@ -656,9 +661,10 @@ export async function initAdvancedSettings(): Promise<AdvancedSettings> {
   }
 
   try {
-    const [channel, analyticsEnabled, extensionDevToolsEnabled, walkthroughState, maxHeapSizeMB, alphaFeatures, betaFeatures, enableAllBetaFeatures, customPathDirs, spellcheckEnabled, historyMaxAgeDays, historyMaxSnapshots, preferredTerminalShell] =
+    const [channel, dogfoodUpdateFeedURL, analyticsEnabled, extensionDevToolsEnabled, walkthroughState, maxHeapSizeMB, alphaFeatures, betaFeatures, enableAllBetaFeatures, customPathDirs, spellcheckEnabled, historyMaxAgeDays, historyMaxSnapshots, preferredTerminalShell] =
       await Promise.all([
         window.electronAPI.invoke('release-channel:get'),
+        window.electronAPI.invoke('app-settings:get', 'dogfoodUpdateFeedURL'),
         window.electronAPI.invoke('analytics:is-enabled'),
         window.electronAPI.extensionDevTools.isEnabled(),
         window.electronAPI.invoke('walkthroughs:get-state'),
@@ -680,6 +686,7 @@ export async function initAdvancedSettings(): Promise<AdvancedSettings> {
 
     return {
       releaseChannel: channel ?? 'stable',
+      dogfoodUpdateFeedURL: typeof dogfoodUpdateFeedURL === 'string' ? dogfoodUpdateFeedURL : '',
       analyticsEnabled: analyticsEnabled ?? true,
       extensionDevToolsEnabled: extensionDevToolsEnabled ?? false,
       walkthroughsEnabled: walkthroughState?.enabled ?? true,
