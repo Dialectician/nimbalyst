@@ -17,7 +17,7 @@ export type AppTheme = 'dark' | 'light' | 'system' | 'auto' | 'crystal-dark' | s
 export type { SessionState, SessionWindow } from '../types';
 
 export type CompletionSoundType = 'chime' | 'bell' | 'pop' | 'alert' | 'none';
-export type ReleaseChannel = 'stable' | 'alpha';
+export type ReleaseChannel = 'stable' | 'alpha' | 'dogfood';
 export type PreferredTerminalShell = 'auto' | 'pwsh' | 'powershell' | 'git-bash' | 'wsl' | 'cmd';
 export type WorkspaceFileTreeFilter = 'all' | 'markdown' | 'known' | 'git-uncommitted' | 'git-worktree' | 'ai-read' | 'ai-written';
 export type TrackerSyncModeSetting = 'local' | 'shared' | 'hybrid';
@@ -66,6 +66,8 @@ interface AppStoreSchema {
   osNotificationsEnabled?: boolean;
   // Release channel
   releaseChannel?: ReleaseChannel;
+  // Custom generic feed URL for dogfood updates (base URL containing latest-mac.yml)
+  dogfoodUpdateFeedURL?: string;
   // Default AI model for new sessions (format: "provider:model" e.g., "claude-code:sonnet")
   defaultAIModel?: string;
   // Analytics
@@ -1203,7 +1205,7 @@ export function setSessionBlockedNotificationsEnabled(enabled: boolean): void {
 export function getReleaseChannel(): ReleaseChannel {
   // Allow env override for testing (set via NIMBALYST_RELEASE_CHANNEL=alpha)
   const envChannel = process.env.NIMBALYST_RELEASE_CHANNEL;
-  if (envChannel === 'alpha' || envChannel === 'stable') {
+  if (envChannel === 'alpha' || envChannel === 'stable' || envChannel === 'dogfood') {
     return envChannel;
   }
   return getAppStore().get('releaseChannel', 'stable');
@@ -1211,6 +1213,26 @@ export function getReleaseChannel(): ReleaseChannel {
 
 export function setReleaseChannel(channel: ReleaseChannel): void {
   getAppStore().set('releaseChannel', channel);
+}
+
+export function getDogfoodUpdateFeedURL(): string | undefined {
+  const envURL = process.env.NIMBALYST_DOGFOOD_UPDATE_FEED_URL?.trim();
+  if (envURL) return envURL;
+
+  const storedURL = getAppStore().get('dogfoodUpdateFeedURL');
+  if (typeof storedURL !== 'string') return undefined;
+
+  const trimmedURL = storedURL.trim();
+  return trimmedURL || undefined;
+}
+
+export function setDogfoodUpdateFeedURL(url: string): void {
+  const trimmedURL = url.trim();
+  if (trimmedURL) {
+    getAppStore().set('dogfoodUpdateFeedURL', trimmedURL);
+  } else {
+    getAppStore().delete('dogfoodUpdateFeedURL');
+  }
 }
 
 // User Onboarding

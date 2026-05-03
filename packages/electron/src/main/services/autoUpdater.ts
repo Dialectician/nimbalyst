@@ -3,7 +3,7 @@ import { app, BrowserWindow, dialog } from 'electron';
 import log from 'electron-log/main';
 import * as fs from 'fs';
 import * as path from 'path';
-import { getReleaseChannel, store } from '../utils/store';
+import { getDogfoodUpdateFeedURL, getReleaseChannel, store } from '../utils/store';
 import { safeHandle, safeOn } from '../utils/ipcRegistry';
 import { AnalyticsService } from './analytics/AnalyticsService';
 import { hasActiveStreamingSessions } from '../ipc/SessionStateHandlers';
@@ -53,6 +53,10 @@ function isWindowsRenameLockError(err: Error): boolean {
   return false;
 }
 
+function normalizeGenericFeedURL(url: string): string {
+  return url.endsWith('/') ? url : `${url}/`;
+}
+
 export class AutoUpdaterService {
   private updateCheckInterval: NodeJS.Timeout | null = null;
   private isCheckingForUpdate = false;
@@ -92,6 +96,23 @@ export class AutoUpdaterService {
         provider: 'generic',
         url: alphaFeedURL
       });
+    } else if (channel === 'dogfood') {
+      const dogfoodFeedURL = getDogfoodUpdateFeedURL();
+      if (dogfoodFeedURL) {
+        const normalizedFeedURL = normalizeGenericFeedURL(dogfoodFeedURL);
+        log.info(`Configuring dogfood channel updates from: ${normalizedFeedURL}`);
+        autoUpdater.setFeedURL({
+          provider: 'generic',
+          url: normalizedFeedURL,
+        });
+      } else {
+        log.warn('Dogfood release channel selected without a configured feed URL; falling back to stable GitHub releases');
+        autoUpdater.setFeedURL({
+          provider: 'github',
+          owner: 'nimbalyst',
+          repo: 'nimbalyst'
+        });
+      }
     } else {
       // Stable channel: Use GitHub releases (default)
       log.info('Configuring stable channel updates from GitHub');
@@ -116,30 +137,36 @@ export class AutoUpdaterService {
       const wasManualCheck = this.isManualCheck;
       this.isManualCheck = false;
 
-      // Fetch release notes from R2 if using alpha channel
+      // Fetch release notes from generic feeds when available.
       let releaseNotes = info.releaseNotes as string | undefined;
       const channel = getReleaseChannel();
       log.info(`Release channel: ${channel}, releaseNotes from info: "${releaseNotes}"`);
 
-      // Always fetch release notes from R2 for alpha channel
-      // The latest-mac.yml doesn't include releaseNotes, so we need to fetch it separately
-      if (channel === 'alpha') {
+      // latest-mac.yml often omits release notes for generic feeds, so fetch
+      // them from a sidecar markdown file when we control the feed.
+      const genericReleaseNotesURL =
+        channel === 'alpha'
+          ? 'https://pub-4357a3345db7463580090984c0e4e2ba.r2.dev/RELEASE_NOTES.md'
+          : channel === 'dogfood' && getDogfoodUpdateFeedURL()
+            ? `${normalizeGenericFeedURL(getDogfoodUpdateFeedURL()!)}RELEASE_NOTES.md`
+            : null;
+
+      if (genericReleaseNotesURL) {
         try {
-          const releaseNotesURL = 'https://pub-4357a3345db7463580090984c0e4e2ba.r2.dev/RELEASE_NOTES.md';
-          log.info(`Fetching release notes from: ${releaseNotesURL}`);
-          const response = await fetch(releaseNotesURL);
+          log.info(`Fetching release notes from: ${genericReleaseNotesURL}`);
+          const response = await fetch(genericReleaseNotesURL);
           if (response.ok) {
             releaseNotes = await response.text();
-            log.info('Successfully fetched release notes from R2');
+            log.info('Successfully fetched release notes from generic feed');
             log.info(`Release notes length: ${releaseNotes.length} characters`);
           } else {
             log.warn(`Failed to fetch release notes: ${response.status}`);
           }
         } catch (err) {
-          log.error('Error fetching release notes from R2:', err);
+          log.error('Error fetching release notes from generic feed:', err);
         }
       } else {
-        log.debug('Not fetching from R2 - either not alpha channel or releaseNotes already present');
+        log.debug('Not fetching generic-feed release notes');
       }
 
       log.info(`Final releaseNotes being sent to window: "${releaseNotes?.substring(0, 100)}..."`);

@@ -127,6 +127,7 @@ export function AdvancedPanel() {
 
   const {
     releaseChannel,
+    dogfoodUpdateFeedURL,
     analyticsEnabled,
     extensionDevToolsEnabled,
     walkthroughsEnabled,
@@ -391,7 +392,8 @@ export function AdvancedPanel() {
             <span className="setting-name text-sm font-medium text-[var(--nim-text)]">Update Channel</span>
             <span className="setting-description text-xs leading-relaxed text-[var(--nim-text-muted)]">
               <strong>Stable:</strong> Production-ready releases (recommended for most users).<br/>
-              <strong>Alpha:</strong> Frequent, rough developer releases. Expect bugs and breaking changes between updates.
+              <strong>Alpha:</strong> Frequent, rough developer releases. Expect bugs and breaking changes between updates.<br/>
+              <strong>Dogfood:</strong> Your own update feed for testing packaged builds from your fork or private release pipeline.
             </span>
           </div>
           <select
@@ -407,6 +409,7 @@ export function AdvancedPanel() {
           >
             <option value="stable">Stable</option>
             <option value="alpha">Alpha (Developer Releases)</option>
+            <option value="dogfood">Dogfood (Custom Feed)</option>
           </select>
         </div>
 
@@ -416,6 +419,42 @@ export function AdvancedPanel() {
             <p className="m-0 text-[13px] text-[var(--nim-text)] leading-snug">
               The alpha channel ships rough developer releases that may be unstable or contain unfinished work. Switch back to Stable if you encounter problems.
             </p>
+          </div>
+        )}
+
+        {releaseChannel === 'dogfood' && (
+          <div className="mt-3 flex flex-col gap-3">
+            <div className="setting-item py-0">
+              <div className="setting-text flex flex-col gap-0.5">
+                <span className="setting-name text-sm font-medium text-[var(--nim-text)]">Dogfood Feed URL</span>
+                <span className="setting-description text-xs leading-relaxed text-[var(--nim-text-muted)]">
+                  Base URL for your custom update feed. It should host <code>latest-mac.yml</code> and the matching release assets. Example: <code>https://example.com/nimbalyst-dogfood/</code>
+                </span>
+              </div>
+              <input
+                type="url"
+                value={dogfoodUpdateFeedURL}
+                onChange={(e) => updateSettings({ dogfoodUpdateFeedURL: e.target.value })}
+                placeholder="https://example.com/nimbalyst-dogfood/"
+                className="mt-2 w-full py-2 px-3 rounded-md text-sm bg-[var(--nim-bg-secondary)] border border-[var(--nim-border)] text-[var(--nim-text)] outline-none focus:border-[var(--nim-primary)]"
+              />
+            </div>
+
+            {dogfoodUpdateFeedURL.trim() ? (
+              <div className="flex items-start gap-2 p-3 rounded border border-[var(--nim-primary)]/25 bg-[var(--nim-primary)]/8">
+                <MaterialSymbol icon="construction" size={16} className="text-[var(--nim-primary)] shrink-0 mt-0.5" />
+                <p className="m-0 text-[13px] text-[var(--nim-text)] leading-snug">
+                  Dogfood updates will check this feed instead of upstream. You still need to publish signed package artifacts and update manifests to that URL.
+                </p>
+              </div>
+            ) : (
+              <div className="flex items-start gap-2 p-3 rounded border border-[var(--nim-warning)]/30 bg-[var(--nim-warning)]/10">
+                <MaterialSymbol icon="warning" size={16} className="text-[var(--nim-warning)] shrink-0 mt-0.5" />
+                <p className="m-0 text-[13px] text-[var(--nim-text)] leading-snug">
+                  Dogfood channel is selected, but no feed URL is configured yet. Until you set one, update checks will fall back to upstream stable releases.
+                </p>
+              </div>
+            )}
           </div>
         )}
       </div>
