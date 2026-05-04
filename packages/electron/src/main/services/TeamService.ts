@@ -60,7 +60,7 @@ import { performKeyRotation, cleanupOrphanedDocuments, reEncryptTrackerFromLocal
 // Server URL Helper
 // ============================================================================
 
-const PRODUCTION_COLLAB_URL = 'https://sync.nimbalyst.com';
+const PRODUCTION_COLLAB_URL = 'https://nimbalyst-collabv3-dogfood.bsweet.workers.dev';
 const DEVELOPMENT_COLLAB_URL = 'http://localhost:8790';
 
 /**

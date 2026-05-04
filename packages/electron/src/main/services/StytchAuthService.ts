@@ -1437,7 +1437,7 @@ export async function refreshSessionForAccount(personalOrgId: string): Promise<s
   }
 }
 
-const PRODUCTION_SYNC_URL = 'https://sync.nimbalyst.com';
+const PRODUCTION_SYNC_URL = 'https://nimbalyst-collabv3-dogfood.bsweet.workers.dev';
 const DEVELOPMENT_SYNC_URL = 'http://localhost:8790';
 
 /**

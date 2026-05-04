@@ -22,7 +22,7 @@ import WebSocket from 'ws';
 const proxiedWebSockets = new Map<string, WebSocket>();
 let wsIdCounter = 0;
 
-const PRODUCTION_SYNC_URL = 'wss://sync.nimbalyst.com';
+const PRODUCTION_SYNC_URL = 'wss://nimbalyst-collabv3-dogfood.bsweet.workers.dev';
 const DEVELOPMENT_SYNC_URL = 'ws://localhost:8790';
 
 function getCollabPendingKey(orgId: string, documentId: string): string {
