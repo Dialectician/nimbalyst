@@ -47,16 +47,17 @@ exports.default = async function notarizing(context) {
   const appName = context.packager.appInfo.productFilename;
   const appPath = path.join(appOutDir, `${appName}.app`);
 
+  const teamId = process.env.APPLE_TEAM_ID || '3GYP4YJ3DH';
   console.log('Notarizing application...');
   console.log('App path:', appPath);
   console.log('Apple ID:', process.env.APPLE_ID);
-  console.log('Team ID: 3GYP4YJ3DH');
+  console.log('Team ID:', teamId);
 
   try {
     await notarize({
       tool: 'notarytool',
       appPath: appPath,
-      teamId: '3GYP4YJ3DH',
+      teamId: process.env.APPLE_TEAM_ID || '3GYP4YJ3DH',
       appleId: process.env.APPLE_ID,
       appleIdPassword: process.env.APPLE_APP_SPECIFIC_PASSWORD,
     });

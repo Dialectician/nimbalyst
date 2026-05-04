@@ -196,3 +196,93 @@ TEST_AUTH_BYPASS = "false"
 STYTCH_PROJECT_ID = "project-live-70b810e0-b201-4cf4-b8e8-2b694fd4515f"
 ALLOWED_ORIGINS = "https://app.nimbalyst.com,https://nimbalyst.com,capacitor://localhost"
 STYTCH_PUBLIC_TOKEN = "public-token-live-db5dfb0e-6423-4166-8366-164f4138e0ff"
+
+# Dogfood environment (Brian's self-hosted team deployment)
+# Uses .workers.dev free subdomain; deploy via: npx wrangler deploy --env dogfood
+[env.dogfood]
+name = "nimbalyst-collabv3-dogfood"
+workers_dev = true
+
+# Dogfood Durable Objects (same classes as production)
+[[env.dogfood.durable_objects.bindings]]
+name = "SESSION_ROOM"
+class_name = "PersonalSessionRoom"
+
+[[env.dogfood.durable_objects.bindings]]
+name = "INDEX_ROOM"
+class_name = "PersonalIndexRoom"
+
+[[env.dogfood.durable_objects.bindings]]
+name = "PROJECT_SYNC_ROOM"
+class_name = "PersonalProjectSyncRoom"
+
+[[env.dogfood.durable_objects.bindings]]
+name = "DOCUMENT_ROOM"
+class_name = "TeamDocumentRoom"
+
+[[env.dogfood.durable_objects.bindings]]
+name = "TRACKER_ROOM"
+class_name = "TeamTrackerRoom"
+
+[[env.dogfood.durable_objects.bindings]]
+name = "TEAM_ROOM"
+class_name = "TeamRoom"
+
+# Dogfood Analytics Engine intentionally omitted -- account-level toggle required.
+# Worker code uses optional chaining (env.ANALYTICS?.writeDataPoint), so absence is safe.
+# Re-add this block if Analytics Engine gets enabled on the account later:
+# [[env.dogfood.analytics_engine_datasets]]
+# binding = "ANALYTICS"
+# dataset = "nimbalyst_sync"
+
+# Dogfood R2 buckets
+[[env.dogfood.r2_buckets]]
+binding = "SESSION_SHARES"
+bucket_name = "nimbalyst-session-shares-dogfood"
+
+[[env.dogfood.r2_buckets]]
+binding = "DOCUMENT_ASSETS"
+bucket_name = "nimbalyst-document-assets-dogfood"
+
+# Dogfood D1 Database
+[[env.dogfood.d1_databases]]
+binding = "DB"
+database_name = "nimbalyst-collabv3-dogfood"
+database_id = "15d4f754-1d95-4a3b-886d-11a6670f25ef"
+
+# Dogfood migrations (same DO migrations as production)
+[[env.dogfood.migrations]]
+tag = "v1"
+new_sqlite_classes = ["SessionRoom", "IndexRoom"]
+
+[[env.dogfood.migrations]]
+tag = "v2"
+new_sqlite_classes = ["DocumentRoom"]
+
+[[env.dogfood.migrations]]
+tag = "v3"
+new_sqlite_classes = ["TrackerRoom"]
+
+[[env.dogfood.migrations]]
+tag = "v4"
+new_sqlite_classes = ["TeamRoom"]
+
+[[env.dogfood.migrations]]
+tag = "v5"
+new_sqlite_classes = ["PersonalProjectSyncRoom"]
+renamed_classes = [
+  { from = "SessionRoom", to = "PersonalSessionRoom" },
+  { from = "IndexRoom", to = "PersonalIndexRoom" },
+  { from = "DocumentRoom", to = "TeamDocumentRoom" },
+  { from = "TrackerRoom", to = "TeamTrackerRoom" },
+]
+
+[env.dogfood.define]
+COLLABV3_VERSION = '"0.0.0-dev"'
+
+[env.dogfood.vars]
+ENVIRONMENT = "production"
+TEST_AUTH_BYPASS = "false"
+STYTCH_PROJECT_ID = "project-test-1d2d06d7-348f-400e-99f1-a0ae9099e01d"
+STYTCH_PUBLIC_TOKEN = "public-token-test-cd535e9e-a250-4aa8-8bf4-5a46cdc437e6"
+ALLOWED_ORIGINS = "capacitor://localhost"
