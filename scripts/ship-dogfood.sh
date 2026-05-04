@@ -52,7 +52,8 @@ ARTIFACTS=()
 for pattern in \
   "${RELEASE_DIR}"/Nimbalyst-*-arm64.dmg \
   "${RELEASE_DIR}"/Nimbalyst-*-arm64.dmg.blockmap \
-  "${RELEASE_DIR}"/Nimbalyst-*-arm64-mac.zip \
+  "${RELEASE_DIR}"/Nimbalyst-*-arm64.zip \
+  "${RELEASE_DIR}"/Nimbalyst-*-arm64.zip.blockmap \
   "${RELEASE_DIR}"/latest-mac.yml; do
   for f in $pattern; do ARTIFACTS+=("$f"); done
 done
