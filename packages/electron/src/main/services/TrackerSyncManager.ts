@@ -272,7 +272,7 @@ export async function initializeTrackerSync(workspacePath: string): Promise<void
   const orgId = team.orgId;
 
   // Determine server URL (same logic as SyncManager)
-  const PRODUCTION_SYNC_URL = 'wss://sync.nimbalyst.com';
+  const PRODUCTION_SYNC_URL = 'wss://nimbalyst-collabv3-dogfood.bsweet.workers.dev';
   const DEVELOPMENT_SYNC_URL = 'ws://localhost:8790';
   const isDevelopmentBuild = process.env.NODE_ENV !== 'production';
   const effectiveEnvironment = isDevelopmentBuild ? config?.environment : undefined;

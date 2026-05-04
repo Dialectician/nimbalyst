@@ -314,7 +314,7 @@ export async function initializeSync(baseStore: SessionStore): Promise<SessionSt
   setSleepPreventionMode(resolvePreventSleepMode(config));
 
   // Determine server URL based on environment setting
-  const PRODUCTION_SYNC_URL = 'wss://sync.nimbalyst.com';
+  const PRODUCTION_SYNC_URL = 'wss://nimbalyst-collabv3-dogfood.bsweet.workers.dev';
   const DEVELOPMENT_SYNC_URL = 'ws://localhost:8790';
 
   // Only honor the environment config in dev builds - production builds always use production sync
@@ -836,7 +836,7 @@ export function getPersonalDocSyncConfig(): {
 
   const isDev = process.env.NODE_ENV !== 'production';
   const env = isDev ? state.config.environment : undefined;
-  const serverUrl = env === 'development' ? 'ws://localhost:8790' : 'wss://sync.nimbalyst.com';
+  const serverUrl = env === 'development' ? 'ws://localhost:8790' : 'wss://nimbalyst-collabv3-dogfood.bsweet.workers.dev';
 
   return {
     serverUrl,

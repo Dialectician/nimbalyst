@@ -132,7 +132,7 @@ export function SyncPanel() {
   // Compute effective server URL early so it can be used throughout
   // Only honor config.environment in dev builds - production always uses production sync
   // Default to production even in dev builds (user must explicitly switch to development)
-  const PRODUCTION_SYNC_URL = 'wss://sync.nimbalyst.com';
+  const PRODUCTION_SYNC_URL = 'wss://nimbalyst-collabv3-dogfood.bsweet.workers.dev';
   const DEVELOPMENT_SYNC_URL = 'ws://localhost:8790';
   const effectiveEnvironment = isDevelopment ? config.environment : undefined;
   const currentEnvironment = effectiveEnvironment || 'production';
@@ -570,7 +570,7 @@ export function SyncPanel() {
           <p className="text-[11px] text-nim-faint mt-1.5 mb-0">
             {currentEnvironment === 'development'
               ? 'Using test Stytch + localhost:8790'
-              : 'Using live Stytch + sync.nimbalyst.com'}
+              : 'Using test Stytch + nimbalyst-collabv3-dogfood.bsweet.workers.dev'}
           </p>
         </div>
       )}

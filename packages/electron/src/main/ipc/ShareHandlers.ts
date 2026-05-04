@@ -13,7 +13,7 @@ import { exportFileToHtml } from '../services/FileHtmlExporter';
 import { getSessionJwt, refreshSession } from '../services/StytchAuthService';
 import { store } from '../utils/store';
 
-const SHARE_SERVER_URL = 'https://sync.nimbalyst.com';
+const SHARE_SERVER_URL = 'https://nimbalyst-collabv3-dogfood.bsweet.workers.dev';
 const DEFAULT_SHARE_EXPIRATION_DAYS = 7;
 const SHARE_METADATA_FILE = 'share-metadata.enc';
 

@@ -943,7 +943,7 @@ export function registerSettingsHandlers() {
             serverUrl = 'ws://localhost:8790';
         } else {
             // Production is the default (for both prod builds and when not explicitly set in dev)
-            serverUrl = 'wss://sync.nimbalyst.com';
+            serverUrl = 'wss://nimbalyst-collabv3-dogfood.bsweet.workers.dev';
         }
 
         // Convert WebSocket URLs to HTTP: wss:// -> https://, ws:// -> http://
@@ -971,7 +971,7 @@ export function registerSettingsHandlers() {
             serverUrl = 'ws://localhost:8790';
         } else {
             // Production is the default (for both prod builds and when not explicitly set in dev)
-            serverUrl = 'wss://sync.nimbalyst.com';
+            serverUrl = 'wss://nimbalyst-collabv3-dogfood.bsweet.workers.dev';
         }
 
         // Convert WebSocket URLs to HTTP: wss:// -> https://, ws:// -> http://
@@ -999,7 +999,7 @@ export function registerSettingsHandlers() {
         } else if (syncConfig?.serverUrl) {
             serverUrl = syncConfig.serverUrl.replace(/^wss:/, 'https:').replace(/^ws:/, 'http:');
         } else {
-            serverUrl = 'https://sync.nimbalyst.com';
+            serverUrl = 'https://nimbalyst-collabv3-dogfood.bsweet.workers.dev';
         }
         return StytchAuth.addAccount(serverUrl);
     });
@@ -1022,7 +1022,7 @@ export function registerSettingsHandlers() {
         if (effectiveEnvironment === 'development') {
             serverUrl = 'ws://localhost:8790';
         } else {
-            serverUrl = 'wss://sync.nimbalyst.com';
+            serverUrl = 'wss://nimbalyst-collabv3-dogfood.bsweet.workers.dev';
         }
         return StytchAuth.deleteAccount(serverUrl);
     });
