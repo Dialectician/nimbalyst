@@ -1,6 +1,6 @@
 {
   "name": "@nimbalyst/electron",
-  "version": "0.58.21",
+  "version": "0.58.22-dogfood",
   "private": true,
   "license": "MIT",
   "description": "Electron app for Nimbalyst",
