@@ -94,7 +94,7 @@ delete_tag()     { api DELETE "/tags/$1" 2>/dev/null || true; }
 say "Creating versioned release ${TAG}..."
 [[ -n "$(get_release_id "$TAG")" ]] && die "Release ${TAG} already exists. Bump version or delete it manually."
 if [[ $DRY_RUN -eq 0 ]]; then
-  body="Dogfood build of v${VERSION}. Built locally from custom/main, signed and notarized.
+  body="Dogfood build of v${VERSION}. Built locally from main, signed and notarized.
 
 Install: download the .dmg from this release. Auto-updates pull from \`${ROLLING_TAG}\`."
   resp=$(create_release "$TAG" "Dogfood ${VERSION}" "$body")

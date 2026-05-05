@@ -94,7 +94,7 @@ Keep the repo close to upstream while we are in this bug-fix phase.
 
 - `upstream` = `https://github.com/Nimbalyst/nimbalyst.git`
 - `origin` = your fork
-- `custom/main` = your working integration branch
+- `main` = your team's working integration branch (this fork's trunk)
 
 Rules:
 
@@ -106,7 +106,7 @@ Rules:
 
 ## Branch Strategy
 
-Use short-lived repair branches from `custom/main`.
+Use short-lived repair branches from `main`.
 
 Suggested naming:
 
@@ -125,16 +125,16 @@ Do not accumulate multiple unrelated repairs in one branch.
 ### 1. Sync your base
 
 ```bash
-git checkout custom/main
+git checkout main
 git fetch upstream --prune
 git merge --ff-only upstream/main
-git push origin custom/main
+git push origin main
 ```
 
 ### 2. Start one repair branch
 
 ```bash
-git checkout -b fix/<short-name> custom/main
+git checkout -b fix/<short-name> main
 ```
 
 ### 3. Fix one problem only
