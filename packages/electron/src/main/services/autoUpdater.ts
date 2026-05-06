@@ -111,6 +111,15 @@ export class AutoUpdaterService {
         log.warn('Dogfood release channel selected without a configured feed URL; falling back to stable GitHub releases');
         autoUpdater.setFeedURL(GITHUB_UPDATE_PROVIDER);
       }
+      // Dogfood Windows builds are not Authenticode-signed (no cert yet), so
+      // electron-updater would reject every update with
+      // "is not signed by the application owner". Bypass signature verification
+      // for the dogfood channel only -- stable/alpha continue to verify normally.
+      if (process.platform === 'win32') {
+        log.warn('Dogfood channel on Windows: bypassing Authenticode signature verification');
+        (autoUpdater as unknown as { verifyUpdateCodeSignature: () => Promise<string | null> }).verifyUpdateCodeSignature =
+          async () => null;
+      }
     } else {
       log.info('Configuring stable channel updates from GitHub releases');
       autoUpdater.allowPrerelease = false;
