@@ -4,7 +4,12 @@
 #
 # Publishes a fresh dogfood build to git.agiterra.org/tankloop/Nymbalyst.
 # - Versioned release tagged from package.json version (archival)
-# - "dogfood-current" rolling release force-updated for the team's auto-updater
+# - "dogfood-current" rolling release updated for the team's auto-updater
+#
+# Multi-platform: run from each build host (mac after build:mac:notarized,
+# Windows after build:win:all). Assets accumulate in the same versioned
+# release and rolling release as long as package.json version matches.
+# Uploads are upserts -- existing assets with the same name are replaced.
 
 set -euo pipefail
 
@@ -56,6 +61,9 @@ for pattern in \
   "${RELEASE_DIR}"/Nimbalyst-*-arm64.zip \
   "${RELEASE_DIR}"/Nimbalyst-*-arm64.zip.blockmap \
   "${RELEASE_DIR}"/latest-mac.yml \
+  "${RELEASE_DIR}"/Nimbalyst-Windows-*.exe \
+  "${RELEASE_DIR}"/Nimbalyst-Windows-*.exe.blockmap \
+  "${RELEASE_DIR}"/latest.yml \
   "${RELEASE_DIR}"/RELEASE_NOTES.md; do
   for f in $pattern; do ARTIFACTS+=("$f"); done
 done
@@ -85,44 +93,88 @@ upload_asset() {
     -F "attachment=@${file};filename=${fname}" \
     "${GITEA_API}/releases/${release_id}/assets?name=${fname}" >/dev/null
 }
+list_assets() { api GET "/releases/$1/assets" 2>/dev/null || echo '[]'; }
+delete_asset() { api DELETE "/releases/$1/assets/$2" >/dev/null 2>&1 || true; }
+upsert_asset() {
+  local release_id=$1; local file=$2
+  local fname; fname=$(basename "$file")
+  local existing_id
+  existing_id=$(list_assets "$release_id" | jq -r --arg n "$fname" '.[] | select(.name == $n) | .id' | head -1)
+  if [[ -n "$existing_id" ]]; then
+    delete_asset "$release_id" "$existing_id"
+  fi
+  upload_asset "$release_id" "$file"
+}
 get_release_id() {
   local out
   out=$(api GET "/releases/tags/$1" 2>/dev/null) || return 0
   echo "$out" | jq -r '.id // empty'
 }
+get_release_body() {
+  local out
+  out=$(api GET "/releases/tags/$1" 2>/dev/null) || return 0
+  echo "$out" | jq -r '.body // empty'
+}
 delete_release() { api DELETE "/releases/$1" >/dev/null; }
 delete_tag()     { api DELETE "/tags/$1" 2>/dev/null || true; }
 
-say "Creating versioned release ${TAG}..."
-[[ -n "$(get_release_id "$TAG")" ]] && die "Release ${TAG} already exists. Bump version or delete it manually."
-if [[ $DRY_RUN -eq 0 ]]; then
-  body="Dogfood build of v${VERSION}. Built locally from main, signed and notarized.
-
-Install: download the .dmg from this release. Auto-updates pull from \`${ROLLING_TAG}\`."
-  resp=$(create_release "$TAG" "Dogfood ${VERSION}" "$body")
-  versioned_id=$(echo "$resp" | jq -r .id)
-  say "  created id=${versioned_id}, uploading ${#ARTIFACTS[@]} assets..."
-  for f in "${ARTIFACTS[@]}"; do upload_asset "$versioned_id" "$f"; echo "    ✓ $(basename "$f")"; done
-fi
-echo
-
-say "Refreshing rolling release ${ROLLING_TAG}..."
-existing_rolling=$(get_release_id "$ROLLING_TAG")
-if [[ -n "$existing_rolling" ]]; then
-  say "  deleting existing id=${existing_rolling}"
+say "Versioned release ${TAG}..."
+existing_versioned=$(get_release_id "$TAG")
+if [[ -n "$existing_versioned" ]]; then
+  say "  reusing existing id=${existing_versioned} (multi-platform ship)"
+  versioned_id="$existing_versioned"
+else
   if [[ $DRY_RUN -eq 0 ]]; then
-    delete_release "$existing_rolling"
-    delete_tag "$ROLLING_TAG"
+    body="Dogfood build of v${VERSION}. Built locally from main, signed and notarized.
+
+Install: download the .dmg (macOS) or .exe (Windows) from this release. Auto-updates pull from \`${ROLLING_TAG}\`."
+    resp=$(create_release "$TAG" "Dogfood ${VERSION}" "$body")
+    versioned_id=$(echo "$resp" | jq -r .id)
+    say "  created id=${versioned_id}"
+  else
+    versioned_id="<dry-run-new>"
+    say "  would create new release"
   fi
 fi
 if [[ $DRY_RUN -eq 0 ]]; then
-  body="Latest dogfood build. Auto-updater feed source. Currently at v${VERSION}.
+  say "  upserting ${#ARTIFACTS[@]} assets..."
+  for f in "${ARTIFACTS[@]}"; do upsert_asset "$versioned_id" "$f"; echo "    ✓ $(basename "$f")"; done
+fi
+echo
 
-Force-updated on every new build. Versioned releases like \`${TAG}\` are kept for archival."
-  resp=$(create_release "$ROLLING_TAG" "Dogfood (current)" "$body")
-  rolling_id=$(echo "$resp" | jq -r .id)
-  say "  created id=${rolling_id}, uploading ${#ARTIFACTS[@]} assets..."
-  for f in "${ARTIFACTS[@]}"; do upload_asset "$rolling_id" "$f"; echo "    ✓ $(basename "$f")"; done
+say "Rolling release ${ROLLING_TAG}..."
+existing_rolling=$(get_release_id "$ROLLING_TAG")
+rolling_needs_reset=0
+if [[ -n "$existing_rolling" ]]; then
+  existing_body=$(get_release_body "$ROLLING_TAG")
+  if echo "$existing_body" | grep -qF "v${VERSION}"; then
+    say "  reusing existing id=${existing_rolling} (still at v${VERSION})"
+    rolling_id="$existing_rolling"
+  else
+    say "  existing rolling release is at a different version -- resetting"
+    rolling_needs_reset=1
+  fi
+fi
+if [[ -z "${existing_rolling:-}" || $rolling_needs_reset -eq 1 ]]; then
+  if [[ $DRY_RUN -eq 0 ]]; then
+    if [[ $rolling_needs_reset -eq 1 ]]; then
+      delete_release "$existing_rolling"
+      delete_tag "$ROLLING_TAG"
+    fi
+    body="Latest dogfood build. Auto-updater feed source. Currently at v${VERSION}.
+
+Updated on every new build. Versioned releases like \`${TAG}\` are kept for archival."
+    resp=$(create_release "$ROLLING_TAG" "Dogfood (current)" "$body")
+    rolling_id=$(echo "$resp" | jq -r .id)
+    say "  created id=${rolling_id}"
+  else
+    rolling_id="<dry-run-new>"
+    say "  would create new rolling release"
+  fi
+fi
+if [[ $DRY_RUN -eq 0 ]]; then
+  say "  upserting ${#ARTIFACTS[@]} assets..."
+  for f in "${ARTIFACTS[@]}"; do upsert_asset "$rolling_id" "$f"; echo "    ✓ $(basename "$f")"; done
 fi
 echo
 
@@ -131,6 +183,9 @@ echo
 echo "  Versioned: https://${GITEA_HOST}/${REPO_OWNER}/${REPO_NAME}/releases/tag/${TAG}"
 echo "  Rolling:   https://${GITEA_HOST}/${REPO_OWNER}/${REPO_NAME}/releases/tag/${ROLLING_TAG}"
 echo
+DOWNLOAD_BASE="https://${GITEA_HOST}/${REPO_OWNER}/${REPO_NAME}/releases/download/${ROLLING_TAG}"
 DMG_NAME=$(basename "$(ls "${RELEASE_DIR}"/Nimbalyst-*-arm64.dmg 2>/dev/null | head -1)")
-echo "  Team DMG:  https://${GITEA_HOST}/${REPO_OWNER}/${REPO_NAME}/releases/download/${ROLLING_TAG}/${DMG_NAME}"
-echo "  Feed URL:  https://${GITEA_HOST}/${REPO_OWNER}/${REPO_NAME}/releases/download/${ROLLING_TAG}/"
+EXE_NAME=$(basename "$(ls "${RELEASE_DIR}"/Nimbalyst-Windows-*.exe 2>/dev/null | head -1)")
+[[ -n "$DMG_NAME" ]] && echo "  Team DMG:  ${DOWNLOAD_BASE}/${DMG_NAME}"
+[[ -n "$EXE_NAME" ]] && echo "  Team EXE:  ${DOWNLOAD_BASE}/${EXE_NAME}"
+echo "  Feed URL:  ${DOWNLOAD_BASE}/"
