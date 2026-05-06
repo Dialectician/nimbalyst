@@ -36,7 +36,8 @@ command -v jq   >/dev/null || die "jq required (brew install jq)"
 
 VERSION=$(jq -r .version packages/electron/package.json)
 [[ -z "$VERSION" || "$VERSION" == "null" ]] && die "Could not read version."
-TAG="v${VERSION}-dogfood"
+[[ "$VERSION" == *-dogfood* ]] || die "Version must be a semver prerelease with -dogfood (e.g. 0.59.0-dogfood.1). Got: ${VERSION}"
+TAG="v${VERSION}"
 
 say "Repo:      ${REPO_OWNER}/${REPO_NAME}"
 say "Version:   ${VERSION}"
