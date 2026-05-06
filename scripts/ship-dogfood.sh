@@ -65,7 +65,11 @@ for pattern in \
   "${RELEASE_DIR}"/Nimbalyst-Windows-*.exe.blockmap \
   "${RELEASE_DIR}"/latest.yml \
   "${RELEASE_DIR}"/RELEASE_NOTES.md; do
-  for f in $pattern; do ARTIFACTS+=("$f"); done
+  for f in $pattern; do
+    # Literal paths (latest.yml, latest-mac.yml, RELEASE_NOTES.md) bypass nullglob,
+    # so explicitly skip ones that don't exist on this build host.
+    [[ -f "$f" ]] && ARTIFACTS+=("$f")
+  done
 done
 [[ ${#ARTIFACTS[@]} -eq 0 ]] && die "No artifacts found in ${RELEASE_DIR}."
 
@@ -184,8 +188,8 @@ echo "  Versioned: https://${GITEA_HOST}/${REPO_OWNER}/${REPO_NAME}/releases/tag
 echo "  Rolling:   https://${GITEA_HOST}/${REPO_OWNER}/${REPO_NAME}/releases/tag/${ROLLING_TAG}"
 echo
 DOWNLOAD_BASE="https://${GITEA_HOST}/${REPO_OWNER}/${REPO_NAME}/releases/download/${ROLLING_TAG}"
-DMG_NAME=$(basename "$(ls "${RELEASE_DIR}"/Nimbalyst-*-arm64.dmg 2>/dev/null | head -1)")
-EXE_NAME=$(basename "$(ls "${RELEASE_DIR}"/Nimbalyst-Windows-*.exe 2>/dev/null | head -1)")
-[[ -n "$DMG_NAME" ]] && echo "  Team DMG:  ${DOWNLOAD_BASE}/${DMG_NAME}"
-[[ -n "$EXE_NAME" ]] && echo "  Team EXE:  ${DOWNLOAD_BASE}/${EXE_NAME}"
+DMG_MATCHES=("${RELEASE_DIR}"/Nimbalyst-*-arm64.dmg)
+EXE_MATCHES=("${RELEASE_DIR}"/Nimbalyst-Windows-*.exe)
+[[ -e "${DMG_MATCHES[0]:-}" ]] && echo "  Team DMG:  ${DOWNLOAD_BASE}/$(basename "${DMG_MATCHES[0]}")"
+[[ -e "${EXE_MATCHES[0]:-}" ]] && echo "  Team EXE:  ${DOWNLOAD_BASE}/$(basename "${EXE_MATCHES[0]}")"
 echo "  Feed URL:  ${DOWNLOAD_BASE}/"
