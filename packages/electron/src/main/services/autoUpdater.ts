@@ -12,6 +12,11 @@ import { getDatabase } from '../database/initialize';
 
 // Reminder suppression duration: 24 hours
 const REMINDER_SUPPRESSION_DURATION_MS = 24 * 60 * 60 * 1000;
+const GITHUB_UPDATE_PROVIDER = {
+  provider: 'github' as const,
+  owner: 'nimbalyst',
+  repo: 'nimbalyst'
+};
 
 /**
  * Categorize download duration for analytics
@@ -89,13 +94,10 @@ export class AutoUpdaterService {
     const channel = getReleaseChannel();
 
     if (channel === 'alpha') {
-      // Alpha channel: Use Cloudflare R2 bucket
-      const alphaFeedURL = 'https://pub-4357a3345db7463580090984c0e4e2ba.r2.dev/';
-      log.info(`Configuring alpha channel updates from: ${alphaFeedURL}`);
-      autoUpdater.setFeedURL({
-        provider: 'generic',
-        url: alphaFeedURL
-      });
+      log.info('Configuring alpha channel updates from GitHub prereleases');
+      autoUpdater.allowPrerelease = true;
+      autoUpdater.channel = 'alpha';
+      autoUpdater.setFeedURL(GITHUB_UPDATE_PROVIDER);
     } else if (channel === 'dogfood') {
       const dogfoodFeedURL = getDogfoodUpdateFeedURL();
       if (dogfoodFeedURL) {
@@ -107,20 +109,13 @@ export class AutoUpdaterService {
         });
       } else {
         log.warn('Dogfood release channel selected without a configured feed URL; falling back to stable GitHub releases');
-        autoUpdater.setFeedURL({
-          provider: 'github',
-          owner: 'nimbalyst',
-          repo: 'nimbalyst'
-        });
+        autoUpdater.setFeedURL(GITHUB_UPDATE_PROVIDER);
       }
     } else {
-      // Stable channel: Use GitHub releases (default)
-      log.info('Configuring stable channel updates from GitHub');
-      autoUpdater.setFeedURL({
-        provider: 'github',
-        owner: 'nimbalyst',
-        repo: 'nimbalyst'
-      });
+      log.info('Configuring stable channel updates from GitHub releases');
+      autoUpdater.allowPrerelease = false;
+      autoUpdater.channel = 'latest';
+      autoUpdater.setFeedURL(GITHUB_UPDATE_PROVIDER);
     }
   }
 
@@ -137,36 +132,26 @@ export class AutoUpdaterService {
       const wasManualCheck = this.isManualCheck;
       this.isManualCheck = false;
 
-      // Fetch release notes from generic feeds when available.
       let releaseNotes = info.releaseNotes as string | undefined;
       const channel = getReleaseChannel();
-      log.info(`Release channel: ${channel}, releaseNotes from info: "${releaseNotes}"`);
+      log.info(`Release channel: ${channel}, releaseNotes present: ${Boolean(releaseNotes)}`);
 
-      // latest-mac.yml often omits release notes for generic feeds, so fetch
-      // them from a sidecar markdown file when we control the feed.
-      const genericReleaseNotesURL =
-        channel === 'alpha'
-          ? 'https://pub-4357a3345db7463580090984c0e4e2ba.r2.dev/RELEASE_NOTES.md'
-          : channel === 'dogfood' && getDogfoodUpdateFeedURL()
-            ? `${normalizeGenericFeedURL(getDogfoodUpdateFeedURL()!)}RELEASE_NOTES.md`
-            : null;
-
-      if (genericReleaseNotesURL) {
+      // latest-mac.yml on the dogfood generic feed often omits release notes,
+      // so fetch them from a sidecar markdown file when we control the feed.
+      if (channel === 'dogfood' && getDogfoodUpdateFeedURL()) {
+        const genericReleaseNotesURL = `${normalizeGenericFeedURL(getDogfoodUpdateFeedURL()!)}RELEASE_NOTES.md`;
         try {
           log.info(`Fetching release notes from: ${genericReleaseNotesURL}`);
           const response = await fetch(genericReleaseNotesURL);
           if (response.ok) {
             releaseNotes = await response.text();
-            log.info('Successfully fetched release notes from generic feed');
-            log.info(`Release notes length: ${releaseNotes.length} characters`);
+            log.info(`Successfully fetched dogfood release notes (${releaseNotes.length} chars)`);
           } else {
             log.warn(`Failed to fetch release notes: ${response.status}`);
           }
         } catch (err) {
-          log.error('Error fetching release notes from generic feed:', err);
+          log.error('Error fetching release notes from dogfood feed:', err);
         }
-      } else {
-        log.debug('Not fetching generic-feed release notes');
       }
 
       log.info(`Final releaseNotes being sent to window: "${releaseNotes?.substring(0, 100)}..."`);
