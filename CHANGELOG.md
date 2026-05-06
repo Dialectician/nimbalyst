@@ -9,13 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-<!-- New features go here -->
+- Self-hosted dogfood release channel with auto-updater feed pointed at `git.agiterra.org/tankloop/Nymbalyst`. Adds a generic-feed update path with sidecar `RELEASE_NOTES.md` fetching for in-app update toasts.
+- `ship-dogfood.sh` deploy script that publishes notarized macOS builds (DMG + ZIP + blockmaps + `latest-mac.yml` + `RELEASE_NOTES.md`) to a versioned archival release plus a rolling `dogfood-current` release for the auto-updater feed.
 
 ### Changed
-<!-- Changes to existing functionality go here -->
+- Adopt semver-aligned dogfood versioning: `<upstream-version>-dogfood.<N>` anchored to the underlying upstream release (e.g. `0.59.0-dogfood.1`). Replaces the prior fork-invented `0.58.22-dogfood` scheme that did not track upstream cleanly. Drops the redundant `-dogfood` suffix the ship script was appending and validates the version contains `-dogfood` before publishing.
+- Point collab/sync URLs at the self-hosted dogfood Cloudflare Worker for fork installs.
 
 ### Fixed
-<!-- Bug fixes go here -->
+- Meta-agent parents now see actual output from OpenAI Codex children. `extractMessageText` was Claude-only and silently returned null for Codex's `task_complete` / `item.completed` / `event_msg` shapes; `extractUserPrompts` was JSON-parsing prompt strings that Codex stores as raw text. Splits both helpers into a unit-tested `metaAgentMessageText.ts` module covering every shape, and filters `system_reminder` rows so session-naming nudges stop leaking into parent notifications. (PR #145, post-v0.59.0)
+- Pick up `.zip` and `.zip.blockmap` artifacts in the ship-dogfood deploy script (electron-builder writes these for macOS auto-update, but the script was only globbing `.dmg`).
+- Add zip target to the macOS build config so auto-update gets the right artifact format.
 
 ### Removed
 <!-- Removed features go here -->

@@ -55,7 +55,8 @@ for pattern in \
   "${RELEASE_DIR}"/Nimbalyst-*-arm64.dmg.blockmap \
   "${RELEASE_DIR}"/Nimbalyst-*-arm64.zip \
   "${RELEASE_DIR}"/Nimbalyst-*-arm64.zip.blockmap \
-  "${RELEASE_DIR}"/latest-mac.yml; do
+  "${RELEASE_DIR}"/latest-mac.yml \
+  "${RELEASE_DIR}"/RELEASE_NOTES.md; do
   for f in $pattern; do ARTIFACTS+=("$f"); done
 done
 [[ ${#ARTIFACTS[@]} -eq 0 ]] && die "No artifacts found in ${RELEASE_DIR}."
