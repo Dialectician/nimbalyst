@@ -117,6 +117,11 @@ create_release() {
 # upload_asset: POST one file as a release asset, with verbose logging.
 # Logs: filename, size, HTTP status, elapsed time, average upload speed,
 # and the response body if the call did not return 2xx.
+# Globals set by upload_asset so the retry wrapper can decide whether to
+# back off and try again.
+_LAST_UPLOAD_HTTP_CODE=""
+_LAST_UPLOAD_CURL_EXIT=""
+
 upload_asset() {
   local release_id=$1; local file=$2
   local fname; fname=$(basename "$file")
@@ -138,6 +143,8 @@ upload_asset() {
     "${GITEA_API}/releases/${release_id}/assets?name=${fname}" 2>>"$LOG_FILE")
   curl_exit=$?
   set -e
+  _LAST_UPLOAD_HTTP_CODE="$http_code"
+  _LAST_UPLOAD_CURL_EXIT="$curl_exit"
   ended=$(date +%s)
   elapsed=$((ended - started))
   if (( elapsed > 0 && fbytes > 0 )); then
@@ -160,21 +167,84 @@ upload_asset() {
   rm -f "$resp_file"
   return 0
 }
+
+# upload_asset_with_retries: wraps upload_asset with bounded retries and
+# exponential backoff for transient failures. Configurable via env:
+#   SHIP_DOGFOOD_RETRIES (default 3)
+#   SHIP_DOGFOOD_BACKOFF (default 5; doubles each attempt)
+#
+# Retry policy:
+#   - Retry on curl errors (network/connection) and HTTP 408, 429, 5xx
+#   - Do NOT retry on other 4xx (auth, payload too large, validation, etc.)
+#     because they will deterministically fail again.
+upload_asset_with_retries() {
+  local release_id=$1; local file=$2
+  local fname; fname=$(basename "$file")
+  local max_attempts="${SHIP_DOGFOOD_RETRIES:-3}"
+  local backoff="${SHIP_DOGFOOD_BACKOFF:-5}"
+  local attempt=1
+  while (( attempt <= max_attempts )); do
+    if upload_asset "$release_id" "$file"; then
+      if (( attempt > 1 )); then
+        log "upload succeeded on attempt ${attempt}/${max_attempts} for ${fname}"
+      fi
+      return 0
+    fi
+    local code="$_LAST_UPLOAD_HTTP_CODE"
+    local cexit="$_LAST_UPLOAD_CURL_EXIT"
+    # Non-retryable: 4xx other than 408 (request timeout) or 429 (rate limit).
+    # Curl exit 0 with a 4xx response means the server understood and rejected.
+    if [[ "$cexit" == "0" && "$code" =~ ^4 && "$code" != "408" && "$code" != "429" ]]; then
+      log "upload non-retryable: http=${code}, giving up after ${attempt} attempt(s) for ${fname}"
+      return 1
+    fi
+    if (( attempt < max_attempts )); then
+      log "upload attempt ${attempt}/${max_attempts} failed for ${fname} (http=${code} curl_exit=${cexit}); retrying in ${backoff}s"
+      printf '       retry in %ss (attempt %s/%s)\n' "$backoff" "$((attempt+1))" "$max_attempts" >&2
+      sleep "$backoff"
+      backoff=$((backoff * 2))
+    fi
+    attempt=$((attempt + 1))
+  done
+  log "upload exhausted ${max_attempts} retries for ${fname}"
+  return 1
+}
+
 list_assets() { api GET "/releases/$1/assets" 2>/dev/null || echo '[]'; }
 delete_asset() {
   log "delete asset release=$1 asset_id=$2"
   api DELETE "/releases/$1/assets/$2" >/dev/null 2>>"$LOG_FILE" || true
 }
+
+# upsert_asset returns:
+#   0 on success (uploaded OR skipped because already correct)
+#   1 on failure
+# Communicates the success-mode via $LAST_UPSERT_STATUS so the caller can
+# show "✓" vs "= already uploaded" in the terminal.
+LAST_UPSERT_STATUS=""
 upsert_asset() {
   local release_id=$1; local file=$2
   local fname; fname=$(basename "$file")
-  local existing_id
-  existing_id=$(list_assets "$release_id" | jq -r --arg n "$fname" '.[] | select(.name == $n) | .id' | head -1)
+  local fbytes; fbytes=$(file_size_bytes "$file")
+  local existing existing_id existing_size
+  existing=$(list_assets "$release_id" | jq -c --arg n "$fname" '[.[] | select(.name == $n)] | first // {}')
+  existing_id=$(echo "$existing" | jq -r '.id // empty')
+  existing_size=$(echo "$existing" | jq -r '.size // empty')
+  if [[ -n "$existing_id" && -n "$existing_size" && "$existing_size" == "$fbytes" ]]; then
+    log "upsert: existing asset id=${existing_id} matches local size=${fbytes}, skipping ${fname}"
+    LAST_UPSERT_STATUS="skipped"
+    return 0
+  fi
   if [[ -n "$existing_id" ]]; then
-    log "upsert: existing asset id=${existing_id} for ${fname}; deleting before re-upload"
+    log "upsert: existing asset id=${existing_id} size=${existing_size:-unknown} differs from local size=${fbytes}, deleting before re-upload"
     delete_asset "$release_id" "$existing_id"
   fi
-  upload_asset "$release_id" "$file"
+  if upload_asset_with_retries "$release_id" "$file"; then
+    LAST_UPSERT_STATUS="uploaded"
+    return 0
+  fi
+  LAST_UPSERT_STATUS="failed"
+  return 1
 }
 get_release_id() {
   local out
@@ -188,6 +258,45 @@ get_release_body() {
 }
 delete_release() { api DELETE "/releases/$1" >/dev/null; }
 delete_tag()     { api DELETE "/tags/$1" 2>/dev/null || true; }
+
+# preflight: verify gitea API is reachable and the token is accepted before
+# we burn any time on uploads. Fails fast with a clear message if either
+# breaks, so a long DMG upload never starts against a broken endpoint.
+preflight_check() {
+  local resp_file http_code
+  resp_file=$(mktemp -t ship-dogfood-preflight.XXXXXX)
+  set +e
+  http_code=$(curl -sS \
+    -o "$resp_file" \
+    -w '%{http_code}' \
+    --max-time 30 \
+    --connect-timeout 10 \
+    -H "$AUTH_HEADER" \
+    "${GITEA_API}/releases?limit=1" 2>>"$LOG_FILE")
+  local cexit=$?
+  set -e
+  log "preflight http=${http_code} curl_exit=${cexit}"
+  if [[ "$cexit" -ne 0 ]]; then
+    rm -f "$resp_file"
+    die "preflight: cannot reach ${GITEA_API} (curl exit ${cexit}). Check network. Log: ${LOG_FILE}"
+  fi
+  if [[ "$http_code" == "401" || "$http_code" == "403" ]]; then
+    rm -f "$resp_file"
+    die "preflight: gitea rejected token (HTTP ${http_code}). Check ~/.config/agiterra/token or GITEA_TOKEN."
+  fi
+  if [[ ! "$http_code" =~ ^2 ]]; then
+    local body; body=$(head -c 500 "$resp_file" 2>/dev/null)
+    rm -f "$resp_file"
+    die "preflight: gitea API returned HTTP ${http_code}. Response: ${body}. Log: ${LOG_FILE}"
+  fi
+  rm -f "$resp_file"
+  say "Preflight: gitea reachable, token accepted"
+}
+
+if [[ $DRY_RUN -eq 0 ]]; then
+  preflight_check
+fi
+echo
 
 say "Versioned release ${TAG}..."
 existing_versioned=$(get_release_id "$TAG")
@@ -208,21 +317,28 @@ Install: download the .dmg (macOS) or .exe (Windows) from this release. Auto-upd
   fi
 fi
 VERSIONED_OK=0
+VERSIONED_SKIP=0
 VERSIONED_FAIL=0
 VERSIONED_FAILED_NAMES=()
 if [[ $DRY_RUN -eq 0 ]]; then
   say "  upserting ${#ARTIFACTS[@]} assets..."
   for f in "${ARTIFACTS[@]}"; do
     if upsert_asset "$versioned_id" "$f"; then
-      echo "    ✓ $(basename "$f")"
-      VERSIONED_OK=$((VERSIONED_OK + 1))
+      case "$LAST_UPSERT_STATUS" in
+        skipped)
+          echo "    = $(basename "$f") (already uploaded, matching size)"
+          VERSIONED_SKIP=$((VERSIONED_SKIP + 1)) ;;
+        *)
+          echo "    ✓ $(basename "$f")"
+          VERSIONED_OK=$((VERSIONED_OK + 1)) ;;
+      esac
     else
       echo "    ✗ $(basename "$f") -- see ${LOG_FILE}"
       VERSIONED_FAIL=$((VERSIONED_FAIL + 1))
       VERSIONED_FAILED_NAMES+=("$(basename "$f")")
     fi
   done
-  say "  versioned: ${VERSIONED_OK} ok, ${VERSIONED_FAIL} failed"
+  say "  versioned: ${VERSIONED_OK} uploaded, ${VERSIONED_SKIP} skipped (already current), ${VERSIONED_FAIL} failed"
 fi
 echo
 
@@ -257,21 +373,28 @@ Updated on every new build. Versioned releases like \`${TAG}\` are kept for arch
   fi
 fi
 ROLLING_OK=0
+ROLLING_SKIP=0
 ROLLING_FAIL=0
 ROLLING_FAILED_NAMES=()
 if [[ $DRY_RUN -eq 0 ]]; then
   say "  upserting ${#ARTIFACTS[@]} assets..."
   for f in "${ARTIFACTS[@]}"; do
     if upsert_asset "$rolling_id" "$f"; then
-      echo "    ✓ $(basename "$f")"
-      ROLLING_OK=$((ROLLING_OK + 1))
+      case "$LAST_UPSERT_STATUS" in
+        skipped)
+          echo "    = $(basename "$f") (already uploaded, matching size)"
+          ROLLING_SKIP=$((ROLLING_SKIP + 1)) ;;
+        *)
+          echo "    ✓ $(basename "$f")"
+          ROLLING_OK=$((ROLLING_OK + 1)) ;;
+      esac
     else
       echo "    ✗ $(basename "$f") -- see ${LOG_FILE}"
       ROLLING_FAIL=$((ROLLING_FAIL + 1))
       ROLLING_FAILED_NAMES+=("$(basename "$f")")
     fi
   done
-  say "  rolling: ${ROLLING_OK} ok, ${ROLLING_FAIL} failed"
+  say "  rolling: ${ROLLING_OK} uploaded, ${ROLLING_SKIP} skipped (already current), ${ROLLING_FAIL} failed"
 fi
 echo
 
@@ -290,7 +413,10 @@ echo "  Log file:  ${LOG_FILE}"
 
 # Final exit summary -- non-zero if any upload failed so callers (CI, wrappers)
 # can detect a partial ship instead of being misled by the "DONE." line.
+TOTAL_OK=$((${VERSIONED_OK:-0} + ${ROLLING_OK:-0}))
+TOTAL_SKIP=$((${VERSIONED_SKIP:-0} + ${ROLLING_SKIP:-0}))
 TOTAL_FAIL=$((${VERSIONED_FAIL:-0} + ${ROLLING_FAIL:-0}))
+say "Totals: ${TOTAL_OK} uploaded, ${TOTAL_SKIP} skipped, ${TOTAL_FAIL} failed"
 if [[ $TOTAL_FAIL -gt 0 ]]; then
   echo
   warn "${TOTAL_FAIL} upload(s) failed:"
@@ -301,6 +427,7 @@ if [[ $TOTAL_FAIL -gt 0 ]]; then
     printf '  rolling:   %s\n' "${ROLLING_FAILED_NAMES[*]}" >&2
   fi
   echo "  Inspect ${LOG_FILE} for HTTP status, response bodies, and timing." >&2
+  echo "  Re-run the script to retry failed uploads -- successful ones will be skipped." >&2
   log "==== ship-dogfood end (FAIL ${TOTAL_FAIL}) ===="
   exit 1
 fi
