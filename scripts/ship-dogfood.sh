@@ -23,8 +23,31 @@ ROLLING_TAG="dogfood-current"
 DRY_RUN=0
 [[ "${1:-}" == "--dry-run" ]] && DRY_RUN=1
 
-say() { echo "[ship-dogfood] $*"; }
-die() { echo "[ship-dogfood] ERROR: $*" >&2; exit 1; }
+LOG_FILE="${SHIP_DOGFOOD_LOG:-${TMPDIR:-/tmp}/ship-dogfood-$(date +%Y%m%d-%H%M%S).log}"
+mkdir -p "$(dirname "$LOG_FILE")"
+: >"$LOG_FILE"
+
+log()  { printf '[%s] %s\n' "$(date '+%Y-%m-%dT%H:%M:%S')" "$*" >>"$LOG_FILE"; }
+say()  { echo "[ship-dogfood] $*"; log "$*"; }
+warn() { echo "[ship-dogfood] WARN: $*" >&2; log "WARN: $*"; }
+die()  { echo "[ship-dogfood] ERROR: $*" >&2; log "ERROR: $*"; exit 1; }
+
+human_size() {
+  local bytes=$1
+  awk -v b="$bytes" 'BEGIN {
+    split("B KB MB GB TB", units);
+    i = 1;
+    while (b >= 1024 && i < 5) { b = b / 1024; i++; }
+    printf "%.1f %s", b, units[i];
+  }'
+}
+
+file_size_bytes() {
+  stat -f %z "$1" 2>/dev/null || stat -c %s "$1" 2>/dev/null || echo 0
+}
+
+log "==== ship-dogfood start (pid=$$) ===="
+say "Verbose log: ${LOG_FILE}"
 
 if [[ -z "${GITEA_TOKEN:-}" ]]; then
   if [[ -f "$HOME/.config/agiterra/token" ]]; then
@@ -83,28 +106,72 @@ echo
 api() {
   local method=$1; shift
   local path=$1; shift
-  curl -fsS -X "$method" -H "$AUTH_HEADER" "${GITEA_API}${path}" "$@"
+  log "api ${method} ${path}"
+  curl -fsS -X "$method" -H "$AUTH_HEADER" "${GITEA_API}${path}" "$@" 2>>"$LOG_FILE"
 }
 create_release() {
   api POST /releases -H "Content-Type: application/json" -d "$(jq -nc \
     --arg tag "$1" --arg name "$2" --arg body "$3" \
     '{tag_name: $tag, name: $name, body: $body, draft: false, prerelease: false}')"
 }
+# upload_asset: POST one file as a release asset, with verbose logging.
+# Logs: filename, size, HTTP status, elapsed time, average upload speed,
+# and the response body if the call did not return 2xx.
 upload_asset() {
   local release_id=$1; local file=$2
   local fname; fname=$(basename "$file")
-  curl -fsS -X POST -H "$AUTH_HEADER" \
+  local fbytes; fbytes=$(file_size_bytes "$file")
+  local fsize_h; fsize_h=$(human_size "$fbytes")
+  local resp_file; resp_file=$(mktemp -t ship-dogfood-resp.XXXXXX)
+  local started ended elapsed http_code curl_exit speed_h
+  started=$(date +%s)
+  log "upload start release=${release_id} file=${fname} bytes=${fbytes} (${fsize_h})"
+  set +e
+  http_code=$(curl -sS \
+    -o "$resp_file" \
+    -w '%{http_code}' \
+    -X POST \
+    -H "$AUTH_HEADER" \
+    --max-time 1800 \
+    --connect-timeout 30 \
     -F "attachment=@${file};filename=${fname}" \
-    "${GITEA_API}/releases/${release_id}/assets?name=${fname}" >/dev/null
+    "${GITEA_API}/releases/${release_id}/assets?name=${fname}" 2>>"$LOG_FILE")
+  curl_exit=$?
+  set -e
+  ended=$(date +%s)
+  elapsed=$((ended - started))
+  if (( elapsed > 0 && fbytes > 0 )); then
+    speed_h=$(human_size $((fbytes / elapsed)))
+    speed_h="${speed_h}/s"
+  else
+    speed_h="n/a"
+  fi
+  log "upload done  release=${release_id} file=${fname} http=${http_code} curl_exit=${curl_exit} elapsed=${elapsed}s speed=${speed_h}"
+  if [[ "$curl_exit" -ne 0 || ! "$http_code" =~ ^2 ]]; then
+    local body_excerpt; body_excerpt=$(head -c 2000 "$resp_file" 2>/dev/null | tr -d '\0')
+    log "upload FAIL  file=${fname} http=${http_code} curl_exit=${curl_exit} body=${body_excerpt}"
+    rm -f "$resp_file"
+    warn "upload failed: ${fname} (${fsize_h}, HTTP ${http_code}, curl exit ${curl_exit}, ${elapsed}s)"
+    if [[ -n "$body_excerpt" ]]; then
+      printf '       response: %s\n' "$(echo "$body_excerpt" | head -c 200)" >&2
+    fi
+    return 1
+  fi
+  rm -f "$resp_file"
+  return 0
 }
 list_assets() { api GET "/releases/$1/assets" 2>/dev/null || echo '[]'; }
-delete_asset() { api DELETE "/releases/$1/assets/$2" >/dev/null 2>&1 || true; }
+delete_asset() {
+  log "delete asset release=$1 asset_id=$2"
+  api DELETE "/releases/$1/assets/$2" >/dev/null 2>>"$LOG_FILE" || true
+}
 upsert_asset() {
   local release_id=$1; local file=$2
   local fname; fname=$(basename "$file")
   local existing_id
   existing_id=$(list_assets "$release_id" | jq -r --arg n "$fname" '.[] | select(.name == $n) | .id' | head -1)
   if [[ -n "$existing_id" ]]; then
+    log "upsert: existing asset id=${existing_id} for ${fname}; deleting before re-upload"
     delete_asset "$release_id" "$existing_id"
   fi
   upload_asset "$release_id" "$file"
@@ -140,9 +207,22 @@ Install: download the .dmg (macOS) or .exe (Windows) from this release. Auto-upd
     say "  would create new release"
   fi
 fi
+VERSIONED_OK=0
+VERSIONED_FAIL=0
+VERSIONED_FAILED_NAMES=()
 if [[ $DRY_RUN -eq 0 ]]; then
   say "  upserting ${#ARTIFACTS[@]} assets..."
-  for f in "${ARTIFACTS[@]}"; do upsert_asset "$versioned_id" "$f"; echo "    ✓ $(basename "$f")"; done
+  for f in "${ARTIFACTS[@]}"; do
+    if upsert_asset "$versioned_id" "$f"; then
+      echo "    ✓ $(basename "$f")"
+      VERSIONED_OK=$((VERSIONED_OK + 1))
+    else
+      echo "    ✗ $(basename "$f") -- see ${LOG_FILE}"
+      VERSIONED_FAIL=$((VERSIONED_FAIL + 1))
+      VERSIONED_FAILED_NAMES+=("$(basename "$f")")
+    fi
+  done
+  say "  versioned: ${VERSIONED_OK} ok, ${VERSIONED_FAIL} failed"
 fi
 echo
 
@@ -176,9 +256,22 @@ Updated on every new build. Versioned releases like \`${TAG}\` are kept for arch
     say "  would create new rolling release"
   fi
 fi
+ROLLING_OK=0
+ROLLING_FAIL=0
+ROLLING_FAILED_NAMES=()
 if [[ $DRY_RUN -eq 0 ]]; then
   say "  upserting ${#ARTIFACTS[@]} assets..."
-  for f in "${ARTIFACTS[@]}"; do upsert_asset "$rolling_id" "$f"; echo "    ✓ $(basename "$f")"; done
+  for f in "${ARTIFACTS[@]}"; do
+    if upsert_asset "$rolling_id" "$f"; then
+      echo "    ✓ $(basename "$f")"
+      ROLLING_OK=$((ROLLING_OK + 1))
+    else
+      echo "    ✗ $(basename "$f") -- see ${LOG_FILE}"
+      ROLLING_FAIL=$((ROLLING_FAIL + 1))
+      ROLLING_FAILED_NAMES+=("$(basename "$f")")
+    fi
+  done
+  say "  rolling: ${ROLLING_OK} ok, ${ROLLING_FAIL} failed"
 fi
 echo
 
@@ -193,3 +286,22 @@ EXE_MATCHES=("${RELEASE_DIR}"/Nimbalyst-Windows-*.exe)
 [[ -e "${DMG_MATCHES[0]:-}" ]] && echo "  Team DMG:  ${DOWNLOAD_BASE}/$(basename "${DMG_MATCHES[0]}")"
 [[ -e "${EXE_MATCHES[0]:-}" ]] && echo "  Team EXE:  ${DOWNLOAD_BASE}/$(basename "${EXE_MATCHES[0]}")"
 echo "  Feed URL:  ${DOWNLOAD_BASE}/"
+echo "  Log file:  ${LOG_FILE}"
+
+# Final exit summary -- non-zero if any upload failed so callers (CI, wrappers)
+# can detect a partial ship instead of being misled by the "DONE." line.
+TOTAL_FAIL=$((${VERSIONED_FAIL:-0} + ${ROLLING_FAIL:-0}))
+if [[ $TOTAL_FAIL -gt 0 ]]; then
+  echo
+  warn "${TOTAL_FAIL} upload(s) failed:"
+  if [[ ${#VERSIONED_FAILED_NAMES[@]} -gt 0 ]]; then
+    printf '  versioned: %s\n' "${VERSIONED_FAILED_NAMES[*]}" >&2
+  fi
+  if [[ ${#ROLLING_FAILED_NAMES[@]} -gt 0 ]]; then
+    printf '  rolling:   %s\n' "${ROLLING_FAILED_NAMES[*]}" >&2
+  fi
+  echo "  Inspect ${LOG_FILE} for HTTP status, response bodies, and timing." >&2
+  log "==== ship-dogfood end (FAIL ${TOTAL_FAIL}) ===="
+  exit 1
+fi
+log "==== ship-dogfood end (OK) ===="
