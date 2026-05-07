@@ -131,8 +131,14 @@ upload_asset() {
   local started ended elapsed http_code curl_exit speed_h
   started=$(date +%s)
   log "upload start release=${release_id} file=${fname} bytes=${fbytes} (${fsize_h})"
+  # Print a heartbeat line BEFORE curl runs so the user can see what is being
+  # uploaded and isn't staring at a silent terminal. --progress-bar gives us
+  # a live "####" indicator on stderr during the transfer; we tee that to
+  # the terminal AND the log file so post-mortem inspection has the full
+  # curl chatter (DNS failures, "Empty reply from server", etc.) too.
+  printf '       uploading %s (%s)\n' "$fname" "$fsize_h" >&2
   set +e
-  http_code=$(curl -sS \
+  http_code=$(curl --progress-bar -S \
     -o "$resp_file" \
     -w '%{http_code}' \
     -X POST \
@@ -140,7 +146,8 @@ upload_asset() {
     --max-time 1800 \
     --connect-timeout 30 \
     -F "attachment=@${file};filename=${fname}" \
-    "${GITEA_API}/releases/${release_id}/assets?name=${fname}" 2>>"$LOG_FILE")
+    "${GITEA_API}/releases/${release_id}/assets?name=${fname}" \
+    2> >(tee -a "$LOG_FILE" >&2))
   curl_exit=$?
   set -e
   _LAST_UPLOAD_HTTP_CODE="$http_code"
