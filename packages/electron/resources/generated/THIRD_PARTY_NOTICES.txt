@@ -4312,7 +4312,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ================================================================================
-@openai/codex@0.124.0
+@openai/codex@0.128.0
 Selected license: Apache-2.0
 Declared license: Apache-2.0
 Install paths: packages/electron/node_modules/@openai/codex, packages/runtime/node_modules/@openai/codex
@@ -4321,7 +4321,7 @@ Issues: No license file found in package directory
 No license file found.
 
 ================================================================================
-@openai/codex-sdk@0.124.0
+@openai/codex-sdk@0.128.0
 Selected license: Apache-2.0
 Declared license: Apache-2.0
 Install paths: packages/electron/node_modules/@openai/codex-sdk, packages/runtime/node_modules/@openai/codex-sdk

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-05T19:56:09.320Z",
+  "generatedAt": "2026-05-07T17:17:59.560Z",
   "scope": {
     "workspaceRoots": [
       "packages/electron",
@@ -1918,9 +1918,9 @@
       "noticeFiles": []
     },
     {
-      "id": "@openai/codex@0.124.0",
+      "id": "@openai/codex@0.128.0",
       "name": "@openai/codex",
-      "version": "0.124.0",
+      "version": "0.128.0",
       "rawLicense": "Apache-2.0",
       "selectedLicense": "Apache-2.0",
       "reviewRequired": false,
@@ -1935,14 +1935,14 @@
         "packages/electron/node_modules/@openai/codex",
         "packages/runtime/node_modules/@openai/codex"
       ],
-      "resolved": "https://registry.npmjs.org/@openai/codex/-/codex-0.124.0.tgz",
+      "resolved": "https://registry.npmjs.org/@openai/codex/-/codex-0.128.0.tgz",
       "licenseFiles": [],
       "noticeFiles": []
     },
     {
-      "id": "@openai/codex-sdk@0.124.0",
+      "id": "@openai/codex-sdk@0.128.0",
       "name": "@openai/codex-sdk",
-      "version": "0.124.0",
+      "version": "0.128.0",
       "rawLicense": "Apache-2.0",
       "selectedLicense": "Apache-2.0",
       "reviewRequired": false,
@@ -1955,7 +1955,7 @@
         "packages/electron/node_modules/@openai/codex-sdk",
         "packages/runtime/node_modules/@openai/codex-sdk"
       ],
-      "resolved": "https://registry.npmjs.org/@openai/codex-sdk/-/codex-sdk-0.124.0.tgz",
+      "resolved": "https://registry.npmjs.org/@openai/codex-sdk/-/codex-sdk-0.128.0.tgz",
       "licenseFiles": [
         {
           "fileName": "LICENSE",

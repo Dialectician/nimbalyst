@@ -9,20 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Self-hosted dogfood release channel with auto-updater feed pointed at `git.agiterra.org/tankloop/Nymbalyst`. Adds a generic-feed update path with sidecar `RELEASE_NOTES.md` fetching for in-app update toasts.
-- `ship-dogfood.sh` deploy script that publishes notarized macOS builds (DMG + ZIP + blockmaps + `latest-mac.yml` + `RELEASE_NOTES.md`) to a versioned archival release plus a rolling `dogfood-current` release for the auto-updater feed.
+<!-- Added features go here -->
 
 ### Changed
-- Adopt semver-aligned dogfood versioning: `<upstream-version>-dogfood.<N>` anchored to the underlying upstream release (e.g. `0.59.0-dogfood.1`). Replaces the prior fork-invented `0.58.22-dogfood` scheme that did not track upstream cleanly. Drops the redundant `-dogfood` suffix the ship script was appending and validates the version contains `-dogfood` before publishing.
-- Point collab/sync URLs at the self-hosted dogfood Cloudflare Worker for fork installs.
+<!-- Changed features go here -->
 
 ### Fixed
-- Meta-agent parents now see actual output from OpenAI Codex children. `extractMessageText` was Claude-only and silently returned null for Codex's `task_complete` / `item.completed` / `event_msg` shapes; `extractUserPrompts` was JSON-parsing prompt strings that Codex stores as raw text. Splits both helpers into a unit-tested `metaAgentMessageText.ts` module covering every shape, and filters `system_reminder` rows so session-naming nudges stop leaking into parent notifications. (PR #145, post-v0.59.0)
-- Pick up `.zip` and `.zip.blockmap` artifacts in the ship-dogfood deploy script (electron-builder writes these for macOS auto-update, but the script was only globbing `.dmg`).
-- Add zip target to the macOS build config so auto-update gets the right artifact format.
+<!-- Fixed features go here -->
 
 ### Removed
 <!-- Removed features go here -->
+
+## [0.59.1-dogfood.1] - 2026-05-07
+
+### Changed
+- Sync upstream `v0.59.1` into the dogfood track. Brings in 36 upstream commits since `0.59.0-dogfood.1`'s base of `6776c18d`, fully documented in the `[0.59.1]` section below. Highlights for dogfood users: Codex `file_change` tool calls now render as inline red/green edit cards in the transcript; voice agent gains a `create_session` MCP tool that auto-links the new session; tracker schema introspection and validation are exposed through MCP (NIM-371); the new `collab-asset://` scheme delivers E2E-encrypted attachments to the renderer same-origin so drag/drop into collaborative docs no longer fails on CORS; `tracker_create` no longer auto-links sessions (NIM-408); cross-window session reload pollution is fixed; meta-agent MCP tools are restored for Codex sessions; bundled `@openai/codex-sdk` upgraded to 0.128.0; OAuth `CLAUDE_CODE_ENTRYPOINT` defaults to `'cli'` so subscription traffic isn't deprioritized as third-party; `GitRefWatcher` no longer stack-traces on empty repos.
+- Multi-platform shipping in `ship-dogfood.sh`: assets accumulate in the same versioned release across mac and windows hosts as long as `package.json` version matches; uploads are upserts so re-running on the same host replaces existing files cleanly.
+
+### Fixed
+- `ship-dogfood.sh` now skips literal artifact paths (`latest.yml`, `latest-mac.yml`, `RELEASE_NOTES.md`) when they're absent on the current host, instead of bailing out. Outputs guard against missing matches when printing team download URLs.
+- Dogfood Windows auto-updater bypasses Authenticode signature verification, since dogfood Windows builds are unsigned.
+
+## [0.59.0-dogfood.1-meta] - dogfood infrastructure (carried forward)
+
+These items shipped in `0.59.0-dogfood.1` and remain in effect:
+
+- Self-hosted dogfood release channel with auto-updater feed pointed at `git.agiterra.org/tankloop/Nymbalyst`, with sidecar `RELEASE_NOTES.md` fetching for in-app update toasts.
+- `ship-dogfood.sh` deploy script that publishes notarized macOS builds (DMG + ZIP + blockmaps + `latest-mac.yml` + `RELEASE_NOTES.md`) to a versioned archival release plus a rolling `dogfood-current` release for the auto-updater feed.
+- Semver-aligned dogfood versioning (`<upstream-version>-dogfood.<N>`).
+- Collab/sync URLs pointed at the self-hosted dogfood Cloudflare Worker for fork installs.
+- Picks up `.zip` / `.zip.blockmap` artifacts in `ship-dogfood.sh` so macOS auto-update gets the right artifact format; matching `zip` target in the macOS build config.
+- Meta-agent Codex extraction (PR #145, post-v0.59.0).
 
 ## [0.59.1] - 2026-05-06
 
